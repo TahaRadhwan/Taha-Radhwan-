@@ -1,0 +1,21 @@
+{
+  "name": "طه رضوان للتخليص الجمركي والخدمات اللوجستية",
+  "short_name": "طه رضوان",
+  "description": "اللوحة السحابية الموحدة لإدارة وتخليص الشحنات والبيانات الجمركية والترانزيت بالجمهورية اليمنية",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#020617",
+  "theme_color": "#059669",
+  "dir": "rtl",
+  "lang": "ar",
+  "orientation": "portrait-primary",
+  "categories": ["business", "productivity"],
+  "icons": [
+    {
+      "src": "/src/assets/images/logo_icon_1784393762345.jpg",
+      "sizes": "512x512",
+      "type": "image/jpeg",
+      "purpose": "any maskable"
+    }
+  ]
+}

@@ -17,6 +17,8 @@ import TrackingMap from './components/TrackingMap';
 import DigitalDocumentCenter from './components/DigitalDocumentCenter';
 import AlertSettings from './components/AlertSettings';
 import GoogleWorkspacePanel from './components/GoogleWorkspacePanel';
+import CustomsCalculator from './components/CustomsCalculator';
+import CostAnalysisChart from './components/CostAnalysisChart';
 import { setWorkspaceToken } from './lib/workspace';
 import { 
   Building2, 
@@ -89,6 +91,37 @@ export default function App() {
   // حالة المستخدم والربط السحابي لـ Firebase
   const [user, setUser] = useState<any>(null);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
+
+  // حالة تثبيت PWA والتشغيل أوفلاين
+  const [pwaPrompt, setPwaPrompt] = useState<any>(null);
+  const [isPwaInstalled, setIsPwaInstalled] = useState(false);
+
+  useEffect(() => {
+    const handleBeforeInstallPrompt = (e: Event) => {
+      e.preventDefault();
+      setPwaPrompt(e);
+    };
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+
+    if (window.matchMedia('(display-mode: standalone)').matches) {
+      setIsPwaInstalled(true);
+    }
+
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    };
+  }, []);
+
+  const handleInstallPWA = async () => {
+    if (!pwaPrompt) return;
+    pwaPrompt.prompt();
+    const { outcome } = await pwaPrompt.userChoice;
+    if (outcome === 'accepted') {
+      setIsPwaInstalled(true);
+      setPwaPrompt(null);
+    }
+  };
 
   // مراقبة حالة تسجيل الدخول الجمركي سحابياً
   useEffect(() => {
@@ -757,6 +790,22 @@ export default function App() {
                 </div>
               )}
 
+              {/* زر أو مؤشر تثبيت PWA */}
+              {pwaPrompt ? (
+                <button
+                  onClick={handleInstallPWA}
+                  className="flex items-center gap-1.5 text-xs font-black bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-2 rounded-xl transition-all shadow-xs border border-emerald-500 cursor-pointer"
+                  title="تثبيت التطبيق كـ PWA على جهازك للعمل بدون إنترنت وبسرعة تامة"
+                >
+                  <span>تثبيت التطبيق 📱</span>
+                </button>
+              ) : isPwaInstalled ? (
+                <div className="hidden md:flex items-center gap-1.5 text-[10px] font-bold text-emerald-400 bg-emerald-950/40 border border-emerald-800/30 px-2.5 py-1.5 rounded-xl">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                  <span>تطبيق PWA نشط بالكامل</span>
+                </div>
+              ) : null}
+
               <button 
                 onClick={handleResetSimulator}
                 title="إعادة ضبط المحاكي"
@@ -852,6 +901,16 @@ export default function App() {
           // لوحة التحكم الرئيسية: البطاقات الإحصائية والبحث والقائمة وشراء البضاعة
           <div className="space-y-6">
             <DashboardStats shipments={shipments} />
+            
+            <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
+              <div className="xl:col-span-8">
+                <CostAnalysisChart shipments={shipments} />
+              </div>
+              <div className="xl:col-span-4">
+                <CustomsCalculator />
+              </div>
+            </div>
+
             <ShipmentList 
               shipments={shipments}
               onSelectShipment={setSelectedShipment}
