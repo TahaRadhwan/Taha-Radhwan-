@@ -19,7 +19,7 @@ export const getWorkspaceToken = () => {
  * تصدير المعاملات الجمركية إلى جدول بيانات Google Sheets حياً وبكبسة زر واحدة
  */
 export async function exportToSheets(shipments: Shipment[], token: string): Promise<string> {
-  // 1. إنشاء جدول بيانات جديد
+  // 1. إنشاء جدول بيانات جديد وتسمية الورقة الأولى "Sheet1" صراحة لتفادي مشاكل توطين اللغات (مثلا ورقة1)
   const createRes = await fetch('https://sheets.googleapis.com/v4/spreadsheets', {
     method: 'POST',
     headers: {
@@ -29,7 +29,14 @@ export async function exportToSheets(shipments: Shipment[], token: string): Prom
     body: JSON.stringify({
       properties: {
         title: 'طه رضوان للخدمات اللوجستية - المعاملات الجمركية الموحدة'
-      }
+      },
+      sheets: [
+        {
+          properties: {
+            title: 'Sheet1'
+          }
+        }
+      ]
     })
   });
 
