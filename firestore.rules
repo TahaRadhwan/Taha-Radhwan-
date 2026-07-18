@@ -1,0 +1,98 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // 1. Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Global Helpers
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    
+    function isEmailVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // Entity validation helpers
+    function isValidShipment(data) {
+      return data.id is string && data.id.size() <= 128
+        && data.code is string && data.code.size() <= 32
+        && data.title is string && data.title.size() <= 256
+        && data.cargoType is string && data.cargoType.size() <= 64
+        && data.supplier is string && data.supplier.size() <= 128
+        && data.countryOfOrigin is string && data.countryOfOrigin.size() <= 128
+        && data.portOfDischarge is string && data.portOfDischarge.size() <= 128
+        && data.containerNumber is string && data.containerNumber.size() <= 64
+        && data.weight is number && data.weight >= 0
+        && data.valueUSD is number && data.valueUSD >= 0
+        && data.valueLocal is number && data.valueLocal >= 0
+        && data.carrierName is string && data.carrierName.size() <= 128
+        && data.currentStatus is string && data.currentStatus.size() <= 64
+        && data.documents is list && data.documents.size() <= 50
+        && data.logs is list && data.logs.size() <= 200
+        && data.dutiesPaid is bool
+        && data.transitProgress is number && data.transitProgress >= 0 && data.transitProgress <= 100
+        && data.createdAt is string && data.createdAt.size() <= 64;
+    }
+
+    function isValidNotification(data) {
+      return data.id is string && data.id.size() <= 128
+        && data.title is string && data.title.size() <= 256
+        && data.message is string && data.message.size() <= 1000
+        && data.type is string && data.type.size() <= 32
+        && data.timestamp is string && data.timestamp.size() <= 64
+        && data.isRead is bool
+        && data.category is string && data.category.size() <= 32;
+    }
+
+    function isValidAlertConfig(data) {
+      return data.enableDocsArrival is bool
+        && data.enableCustomsStart is bool
+        && data.enableDeadlineApproaching is bool
+        && data.enablePotentialDelays is bool
+        && data.deadlineThresholdDays is number && data.deadlineThresholdDays >= 0
+        && data.soundEnabled is bool;
+    }
+
+    // Collections
+    match /shipments/{shipmentId} {
+      allow read: if isEmailVerified();
+      allow create: if isEmailVerified() && isValidId(shipmentId) && isValidShipment(incoming()) && incoming().id == shipmentId;
+      allow update: if isEmailVerified() && isValidId(shipmentId) && isValidShipment(incoming()) && (
+        // Ensure critical fields remain immutable
+        incoming().id == existing().id &&
+        incoming().code == existing().code &&
+        incoming().createdAt == existing().createdAt
+      );
+      allow delete: if isEmailVerified() && isValidId(shipmentId);
+    }
+
+    match /notifications/{notificationId} {
+      allow read: if isEmailVerified();
+      allow create: if isEmailVerified() && isValidId(notificationId) && isValidNotification(incoming()) && incoming().id == notificationId;
+      allow update: if isEmailVerified() && isValidId(notificationId) && isValidNotification(incoming()) && incoming().id == existing().id;
+      allow delete: if isEmailVerified() && isValidId(notificationId);
+    }
+
+    match /alertConfig/{userId} {
+      allow read: if isEmailVerified() && userId == request.auth.uid;
+      allow create, update: if isEmailVerified() && userId == request.auth.uid && isValidAlertConfig(incoming());
+      allow delete: if isEmailVerified() && userId == request.auth.uid;
+    }
+  }
+}

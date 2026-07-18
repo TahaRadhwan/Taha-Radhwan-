@@ -1,0 +1,88 @@
+{
+  "entities": {
+    "Shipment": {
+      "title": "Shipment",
+      "description": "Customs shipment entity tracking logistics and compliance data",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "code": { "type": "string", "maxLength": 32 },
+        "title": { "type": "string", "maxLength": 256 },
+        "cargoType": { "type": "string", "maxLength": 64 },
+        "supplier": { "type": "string", "maxLength": 128 },
+        "countryOfOrigin": { "type": "string", "maxLength": 128 },
+        "portOfDischarge": { "type": "string", "maxLength": 128 },
+        "containerNumber": { "type": "string", "maxLength": 64 },
+        "weight": { "type": "number" },
+        "valueUSD": { "type": "number" },
+        "valueLocal": { "type": "number" },
+        "carrierName": { "type": "string", "maxLength": 128 },
+        "currentStatus": { "type": "string", "maxLength": 64 },
+        "documents": { "type": "array" },
+        "logs": { "type": "array" },
+        "hsCode": { "type": "string", "maxLength": 32 },
+        "dutyRate": { "type": "number" },
+        "inspectionChannel": { "type": "string", "maxLength": 32 },
+        "inspectionNotes": { "type": "string", "maxLength": 1000 },
+        "labResult": { "type": "string", "maxLength": 32 },
+        "dutiesPaid": { "type": "boolean" },
+        "transitProgress": { "type": "number" },
+        "createdAt": { "type": "string", "maxLength": 64 },
+        "deliveredAt": { "type": "string", "maxLength": 64 },
+        "direction": { "type": "string", "maxLength": 16 },
+        "clientName": { "type": "string", "maxLength": 128 },
+        "trackingNumber": { "type": "string", "maxLength": 128 },
+        "estimatedArrival": { "type": "string", "maxLength": 64 },
+        "currentLocation": { "type": "string", "maxLength": 256 },
+        "customsClearedAt": { "type": "string", "maxLength": 64 },
+        "readyForPickupAt": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["id", "code", "title", "cargoType", "supplier", "countryOfOrigin", "portOfDischarge", "containerNumber", "weight", "valueUSD", "valueLocal", "carrierName", "currentStatus", "documents", "logs", "dutiesPaid", "transitProgress", "createdAt"]
+    },
+    "AppNotification": {
+      "title": "AppNotification",
+      "description": "App notification record for tracking events and logs",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "shipmentId": { "type": "string", "maxLength": 128 },
+        "shipmentCode": { "type": "string", "maxLength": 32 },
+        "title": { "type": "string", "maxLength": 256 },
+        "message": { "type": "string", "maxLength": 1000 },
+        "type": { "type": "string", "maxLength": 32 },
+        "timestamp": { "type": "string", "maxLength": 64 },
+        "isRead": { "type": "boolean" },
+        "category": { "type": "string", "maxLength": 32 }
+      },
+      "required": ["id", "title", "message", "type", "timestamp", "isRead", "category"]
+    },
+    "AlertConfig": {
+      "title": "AlertConfig",
+      "description": "User's individual custom configuration for alerts",
+      "type": "object",
+      "properties": {
+        "enableDocsArrival": { "type": "boolean" },
+        "enableCustomsStart": { "type": "boolean" },
+        "enableDeadlineApproaching": { "type": "boolean" },
+        "enablePotentialDelays": { "type": "boolean" },
+        "deadlineThresholdDays": { "type": "number" },
+        "soundEnabled": { "type": "boolean" }
+      },
+      "required": ["enableDocsArrival", "enableCustomsStart", "enableDeadlineApproaching", "enablePotentialDelays", "deadlineThresholdDays", "soundEnabled"]
+    }
+  },
+  "firestore": {
+    "/shipments/{shipmentId}": {
+      "schema": { "$ref": "#/entities/Shipment" },
+      "description": "Collection of all shipments tracked in the system"
+    },
+    "/notifications/{notificationId}": {
+      "schema": { "$ref": "#/entities/AppNotification" },
+      "description": "History of alerts and status changes shown to the user"
+    },
+    "/alertConfig/{userId}": {
+      "schema": { "$ref": "#/entities/AlertConfig" },
+      "description": "Settings for alert thresholds and active toggles"
+    }
+  }
+}

@@ -1,0 +1,64 @@
+@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Cairo", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+}
+
+body {
+  font-family: var(--font-sans);
+  background-color: #fcfcfd;
+}
+
+@media print {
+  /* إخفاء كافة عناصر الويب غير المخصصة للطباعة */
+  body {
+    background-color: #ffffff !important;
+    background-image: none !important;
+    color: #000000 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    font-size: 11pt !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    direction: rtl !important;
+  }
+
+  .no-print,
+  #root > div > header,
+  #root > div > nav,
+  #root > div > main,
+  #root > div > footer,
+  button,
+  .modal-overlay:not(.print-mode-overlay) {
+    display: none !important;
+  }
+
+  /* تهيئة صفحة الطباعة A4 */
+  .official-pdf-report {
+    display: block !important;
+    position: absolute !important;
+    top: 0 !important;
+    left: 0 !important;
+    width: 100% !important;
+    height: auto !important;
+    margin: 0 !important;
+    padding: 20mm !important;
+    box-shadow: none !important;
+    border: none !important;
+    background-color: #ffffff !important;
+    color: #000000 !important;
+    direction: rtl !important;
+  }
+
+  /* منع كسر الصفوف جمركياً بمنتصف البيانات */
+  tr {
+    page-break-inside: avoid !important;
+  }
+  
+  thead {
+    display: table-header-group !important;
+  }
+}
+
