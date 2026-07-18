@@ -3,31 +3,40 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-const CACHE_NAME = 'taha-radhwan-logistics-v1';
-const ASSETS_TO_CACHE = [
+const CACHE_VERSION = 'taha-radhwan-v2';
+const STATIC_CACHE = `static-${CACHE_VERSION}`;
+const DYNAMIC_CACHE = `dynamic-${CACHE_VERSION}`;
+const IMAGE_CACHE = `images-${CACHE_VERSION}`;
+
+// الأصول الثابتة الأساسية التي يجب تخزينها مسبقاً أثناء التثبيت (Pre-caching)
+const PRE_CACHE_ASSETS = [
   '/',
   '/index.html',
-  '/manifest.json'
+  '/manifest.json',
+  '/logo_icon_1784393762345.jpg'
 ];
 
-// تثبيت ملف تعريف الارتباط وجلب الأصول الأساسية في وضع عدم الاتصال
+// تثبيت ملف تعريف الارتباط وجلب الأصول الثابتة المحددة سلفاً
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(ASSETS_TO_CACHE);
+    caches.open(STATIC_CACHE).then((cache) => {
+      console.log('[Service Worker] Pre-caching Core App Shell');
+      return cache.addAll(PRE_CACHE_ASSETS);
     }).then(() => {
       return self.skipWaiting();
     })
   );
 });
 
-// تفعيل ملف الخدمة وحذف النسخ القديمة
+// تفعيل ملف الخدمة وحذف جميع الكاشات القديمة التابعة للإصدارات السابقة
 self.addEventListener('activate', (event) => {
+  const activeCaches = [STATIC_CACHE, DYNAMIC_CACHE, IMAGE_CACHE];
   event.waitUntil(
     caches.keys().then((cacheNames) => {
       return Promise.all(
         cacheNames.map((cacheName) => {
-          if (cacheName !== CACHE_NAME) {
+          if (!activeCaches.includes(cacheName)) {
+            console.log(`[Service Worker] Deleting outdated cache: ${cacheName}`);
             return caches.delete(cacheName);
           }
         })
@@ -38,50 +47,123 @@ self.addEventListener('activate', (event) => {
   );
 });
 
-// جلب الموارد وتفعيل الاستراتيجية السحابية للاسترجاع (Stale-While-Revalidate)
+// إدارة واستجابة الطلبات باستراتيجيات ذكية ومتقدمة (Cache-First / Network-First)
 self.addEventListener('fetch', (event) => {
-  // عدم تخزين طلبات API أو طلبات Firebase الخارجية مؤقتاً لضمان المزامنة الحية
+  const { request } = event;
+  const url = new URL(request.url);
+
+  // 1. عدم كشط أو تخزين طلبات قواعد البيانات الحية وطلبات Firebase ومصادقة المستخدم
   if (
-    event.request.url.includes('/api/') || 
-    event.request.url.includes('firestore.googleapis.com') ||
-    event.request.url.includes('identitytoolkit.googleapis.com')
+    url.pathname.includes('/api/') || 
+    url.hostname.includes('firestore.googleapis.com') ||
+    url.hostname.includes('identitytoolkit.googleapis.com') ||
+    url.hostname.includes('securetoken.googleapis.com')
   ) {
+    return; // دع الشبكة تتعامل معها مباشرة للتأكد من المزامنة اللحظية
+  }
+
+  // 2. استراتيجية "Cache-First" للملفات الثابتة والصور والخطوط (حيث لا تتغير باستمرار)
+  const isStaticAsset = 
+    request.destination === 'style' ||
+    request.destination === 'script' ||
+    request.destination === 'font' ||
+    url.pathname.endsWith('.js') ||
+    url.pathname.endsWith('.css') ||
+    url.pathname.endsWith('.woff2') ||
+    url.pathname.endsWith('.woff') ||
+    url.pathname.endsWith('.ttf');
+
+  const isImage = 
+    request.destination === 'image' ||
+    url.pathname.endsWith('.png') ||
+    url.pathname.endsWith('.jpg') ||
+    url.pathname.endsWith('.jpeg') ||
+    url.pathname.endsWith('.svg') ||
+    url.pathname.endsWith('.ico') ||
+    url.pathname.endsWith('.webp');
+
+  if (isStaticAsset) {
+    event.respondWith(
+      caches.match(request).then((cachedResponse) => {
+        if (cachedResponse) {
+          return cachedResponse;
+        }
+        return fetch(request).then((networkResponse) => {
+          if (networkResponse && networkResponse.status === 200) {
+            const responseToCache = networkResponse.clone();
+            caches.open(STATIC_CACHE).then((cache) => {
+              cache.put(request, responseToCache);
+            });
+          }
+          return networkResponse;
+        }).catch(() => {
+          // إرجاع كاش احتياطي عام إذا لزم الأمر
+        });
+      })
+    );
     return;
   }
 
-  event.respondWith(
-    caches.match(event.request).then((cachedResponse) => {
-      if (cachedResponse) {
-        // تحديث الخلفية بشكل غير متزامن
-        fetch(event.request).then((networkResponse) => {
+  if (isImage) {
+    event.respondWith(
+      caches.match(request).then((cachedResponse) => {
+        if (cachedResponse) {
+          return cachedResponse;
+        }
+        return fetch(request).then((networkResponse) => {
           if (networkResponse && networkResponse.status === 200) {
-            caches.open(CACHE_NAME).then((cache) => {
-              cache.put(event.request, networkResponse);
+            const responseToCache = networkResponse.clone();
+            caches.open(IMAGE_CACHE).then((cache) => {
+              cache.put(request, responseToCache);
             });
           }
-        }).catch(() => {
-          // تجاهل فشل الشبكة عند التحديث الخلفي
+          return networkResponse;
         });
-        return cachedResponse;
-      }
+      })
+    );
+    return;
+  }
 
-      return fetch(event.request).then((response) => {
-        if (!response || response.status !== 200 || response.type !== 'basic') {
-          return response;
+  // 3. استراتيجية "Network-First" لطلبات الملاحة وتحديثات الصفحات (Navigation)
+  // تضمن هذه الاستراتيجية جلب أحدث كود للتطبيق إذا كانت الشبكة متصلة، مع التحول الفوري للكاش عند انقطاعها
+  if (request.mode === 'navigate' || url.pathname === '/' || url.pathname.endsWith('.html')) {
+    event.respondWith(
+      fetch(request).then((networkResponse) => {
+        if (networkResponse && networkResponse.status === 200) {
+          const responseToCache = networkResponse.clone();
+          caches.open(DYNAMIC_CACHE).then((cache) => {
+            cache.put(request, responseToCache);
+          });
         }
-
-        const responseToCache = response.clone();
-        caches.open(CACHE_NAME).then((cache) => {
-          cache.put(event.request, responseToCache);
-        });
-
-        return response;
+        return networkResponse;
       }).catch(() => {
-        // في حال انقطاع الشبكة بالكامل وتطلب أصل HTML أساسي، أرجعه من الذاكرة الاحتياطية
-        if (event.request.mode === 'navigate') {
-          return caches.match('/');
+        // في حال انقطاع الشبكة، يتم التحميل مباشرة من كاش الصفحة الرئيسية
+        return caches.match('/').then((fallback) => {
+          if (fallback) return fallback;
+          return caches.match('/index.html');
+        });
+      })
+    );
+    return;
+  }
+
+  // 4. الاستراتيجية الافتراضية لبقية الطلبات (Stale-While-Revalidate)
+  event.respondWith(
+    caches.match(request).then((cachedResponse) => {
+      const fetchPromise = fetch(request).then((networkResponse) => {
+        if (networkResponse && networkResponse.status === 200) {
+          const responseToCache = networkResponse.clone();
+          caches.open(DYNAMIC_CACHE).then((cache) => {
+            cache.put(request, responseToCache);
+          });
         }
+        return networkResponse;
+      }).catch(() => {
+        // تجاهل أخطاء الشبكة أثناء التحديث الخلفي
       });
+
+      return cachedResponse || fetchPromise;
     })
   );
 });
+

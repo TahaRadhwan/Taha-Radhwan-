@@ -3,8 +3,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useState, useEffect } from 'react';
-import { Shipment, CustomsStatus, Document, CargoType } from '../types';
+import React, { useState, useEffect } from 'react';
+import { Shipment, CustomsStatus, Document, CargoType, SmsMessage } from '../types';
 import { TIMELINE_STEPS, HS_CODES, PORTS, CARRIERS, generateContainerNumber } from '../data';
 import { 
   Check, 
@@ -61,6 +61,16 @@ export default function ActiveShipmentDetails({ shipment, onUpdateShipment, onBa
   const [isInventoryMatched, setIsInventoryMatched] = useState(false);
 
   const hsItem = HS_CODES[shipment.cargoType];
+
+  // للرسائل النصية والتحكم برقم جوال المستورد
+  const [phoneInput, setPhoneInput] = useState(shipment.clientPhone || '+967 771 234 567');
+  const [testSmsText, setTestSmsText] = useState('');
+  const [isEditingPhone, setIsEditingPhone] = useState(false);
+
+  // تحديث مدخل الهاتف عند تغيير الشحنة
+  useEffect(() => {
+    setPhoneInput(shipment.clientPhone || '+967 771 234 567');
+  }, [shipment.clientPhone, shipment.id]);
 
   // مزامنة الخطوة المحددة مع حالة الشحنة عند تغيير الشحنة النشطة
   useEffect(() => {
@@ -143,6 +153,39 @@ export default function ActiveShipmentDetails({ shipment, onUpdateShipment, onBa
       deliveredAt = new Date().toISOString().split('T')[0];
     }
 
+    // توليد الرسائل النصية المباشرة (SMS) طبقاً لطلب المستخدم
+    const updatedSms = shipment.smsMessages ? [...shipment.smsMessages] : [];
+    const clientPhone = shipment.clientPhone || '+967 771 234 567';
+
+    if (nextStatus === 'declaration_submitted') {
+      updatedSms.push({
+        id: `sms_${Date.now()}`,
+        phoneNumber: clientPhone,
+        message: `مصلحة الجمارك اليمنية: تم فتح بيان جمركي لبضاعتكم رقم (${shipment.code}) لشحنتكم (${shipment.title}) بنجاح عبر المخلص اللوجستي طه رضوان.`,
+        timestamp: new Date().toISOString().replace('T', ' ').substring(0, 16),
+        status: 'delivered',
+        type: 'declaration'
+      });
+    } else if (nextStatus === 'released') {
+      updatedSms.push({
+        id: `sms_${Date.now()}`,
+        phoneNumber: clientPhone,
+        message: `مصلحة الجمارك اليمنية: تم التسديد والتأشير بالدفع للرسوم الجمركية والضرائب المستحقة للبيان (${shipment.code}) بنجاح، والفسح جاري للتحميل البري.`,
+        timestamp: new Date().toISOString().replace('T', ' ').substring(0, 16),
+        status: 'delivered',
+        type: 'payment'
+      });
+    } else if (nextStatus === 'delivered') {
+      updatedSms.push({
+        id: `sms_${Date.now()}`,
+        phoneNumber: clientPhone,
+        message: `طه رضوان للخدمات اللوجستية: تم الانتهاء التام من معاملة التخليص وتفريغ شحنتكم (${shipment.title}) في مستودعاتكم بنجاح وأمان. نشكركم لثقتكم بخدماتنا اللوجستية.`,
+        timestamp: new Date().toISOString().replace('T', ' ').substring(0, 16),
+        status: 'delivered',
+        type: 'completion'
+      });
+    }
+
     onUpdateShipment({
       ...shipment,
       currentStatus: nextStatus,
@@ -150,8 +193,43 @@ export default function ActiveShipmentDetails({ shipment, onUpdateShipment, onBa
       logs: updatedLogs,
       dutiesPaid: nextStatus === 'released' || nextStatus === 'in_transit' || nextStatus === 'delivered' ? true : shipment.dutiesPaid,
       transitProgress: nextStatus === 'delivered' ? 100 : transitPercent,
-      deliveredAt: deliveredAt
+      deliveredAt: deliveredAt,
+      smsMessages: updatedSms
     });
+  };
+
+  const handleSavePhone = () => {
+    if (!phoneInput.trim()) {
+      alert("الرجاء إدخال رقم جوال صحيح.");
+      return;
+    }
+    onUpdateShipment({
+      ...shipment,
+      clientPhone: phoneInput
+    });
+    setIsEditingPhone(false);
+  };
+
+  const handleSendCustomSms = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!testSmsText.trim()) return;
+
+    const updatedSms = shipment.smsMessages ? [...shipment.smsMessages] : [];
+    updatedSms.push({
+      id: `sms_custom_${Date.now()}`,
+      phoneNumber: shipment.clientPhone || phoneInput,
+      message: testSmsText,
+      timestamp: new Date().toISOString().replace('T', ' ').substring(0, 16),
+      status: 'delivered',
+      type: 'custom'
+    });
+
+    onUpdateShipment({
+      ...shipment,
+      smsMessages: updatedSms
+    });
+
+    setTestSmsText('');
   };
 
   const getStepStatusClass = (stepIndex: number, currentStepIndex: number) => {
@@ -892,6 +970,135 @@ export default function ActiveShipmentDetails({ shipment, onUpdateShipment, onBa
                   <span className="text-gray-500">🚢 جاري تجهيز الأوراق والوثائق وبدء النقل البحري الدولي</span>
                 )}
               </div>
+            </div>
+          </div>
+
+          {/* بوابة رسائل الجوال SMS التفاعلية لطه رضوان للخدمات اللوجستية */}
+          <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-xs flex flex-col space-y-4">
+            <div className="flex justify-between items-center border-b border-gray-100 pb-3">
+              <h4 className="text-xs font-extrabold text-gray-400 tracking-wider uppercase flex items-center gap-1.5">
+                <span className="p-1 bg-amber-50 text-amber-600 rounded-lg">📱</span>
+                <span>بوابة رسائل الجوال المباشرة SMS</span>
+              </h4>
+              <span className="text-[10px] bg-emerald-550/10 text-emerald-700 px-2.5 py-0.5 rounded-full font-bold animate-pulse">
+                متصل بالشبكة اليمنية
+              </span>
+            </div>
+
+            {/* إعدادات وتحديث جوال المستورد لضمان المرونة القصوى المكتوبة لطه رضوان */}
+            <div className="bg-gray-50 border border-gray-100 rounded-xl p-3 space-y-2">
+              <div className="flex justify-between items-center">
+                <span className="text-[11px] font-bold text-gray-500">رقم جوال صاحب البضاعة الموثق:</span>
+                {!isEditingPhone ? (
+                  <button 
+                    onClick={() => setIsEditingPhone(true)}
+                    className="text-[10px] text-emerald-600 hover:text-emerald-700 font-bold transition-colors cursor-pointer"
+                  >
+                    تعديل الرقم ✏️
+                  </button>
+                ) : (
+                  <button 
+                    onClick={handleSavePhone}
+                    className="text-[10px] text-emerald-700 hover:text-emerald-800 font-bold transition-colors cursor-pointer"
+                  >
+                    حفظ ✔️
+                  </button>
+                )}
+              </div>
+
+              {!isEditingPhone ? (
+                <div className="text-xs font-bold text-gray-700 font-mono tracking-wide flex items-center gap-1.5">
+                  <span className="text-base">📞</span>
+                  <span>{shipment.clientPhone || '+967 771 234 567'}</span>
+                </div>
+              ) : (
+                <div className="flex gap-1.5">
+                  <input 
+                    type="text"
+                    value={phoneInput}
+                    onChange={(e) => setPhoneInput(e.target.value)}
+                    className="flex-1 text-xs px-2.5 py-1.5 bg-white border border-gray-200 rounded-lg focus:border-emerald-500 outline-none font-mono"
+                    placeholder="+967 77x xxx xxx"
+                  />
+                  <button 
+                    onClick={handleSavePhone}
+                    className="bg-emerald-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold"
+                  >
+                    تأكيد
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* شاشة الجوال الافتراضية لعرض الرسائل النصية المتدفقة فوراً عند التغيير اللحظي */}
+            <div className="border border-slate-200 bg-slate-900 rounded-3xl p-4 shadow-inner flex flex-col space-y-3 font-sans h-[320px] justify-between relative overflow-hidden">
+              
+              {/* سماعة وحساس الهاتف في التصميم */}
+              <div className="absolute top-1.5 left-1/2 -translate-x-1/2 w-20 h-4 bg-slate-950 rounded-full flex items-center justify-center gap-1.5 z-10">
+                <span className="w-8 h-1 bg-slate-800 rounded-full" />
+                <span className="w-1.5 h-1.5 bg-slate-850 rounded-full" />
+              </div>
+
+              {/* بار الحالة والشبكة والأيقونات الفنية */}
+              <div className="flex justify-between items-center text-[9px] text-slate-400 pt-1 border-b border-slate-800 pb-1.5 font-mono select-none">
+                <span>02:18 م</span>
+                <div className="flex items-center gap-1">
+                  <span>Yemen Mobile</span>
+                  <span className="text-[10px]">📶🔋</span>
+                </div>
+              </div>
+
+              {/* صندوق الرسائل الحالية */}
+              <div className="flex-1 overflow-y-auto space-y-2.5 my-2 scrollbar-none pr-1">
+                {!shipment.smsMessages || shipment.smsMessages.length === 0 ? (
+                  <div className="h-full flex flex-col items-center justify-center text-center p-4">
+                    <span className="text-2xl mb-1.5">💬</span>
+                    <span className="text-[10px] text-slate-500">لا توجد رسائل SMS مرسلة بعد.</span>
+                    <p className="text-[9px] text-slate-600 mt-1">تتولد رسائل تلقائية عند فتح البيان، سداد الفاتورة، أو تسليم الشحنة.</p>
+                  </div>
+                ) : (
+                  shipment.smsMessages.map((sms) => (
+                    <div key={sms.id} className="flex flex-col space-y-0.5">
+                      {/* رأس الرسالة / المصدر */}
+                      <span className="text-[8px] text-emerald-400 font-bold mr-1 self-start">
+                        {sms.type === 'declaration' || sms.type === 'payment' ? 'مصلحة الجمارك' : 'طه رضوان اللوجستية'}
+                      </span>
+                      
+                      {/* فقاعة الرسالة الرمادية الأنيقة */}
+                      <div className="bg-slate-850 border border-slate-800 rounded-2xl rounded-tr-xs p-3 text-[10px] text-slate-200 leading-relaxed max-w-[90%] select-text">
+                        {sms.message}
+                      </div>
+
+                      {/* حالة الوصول والوقت */}
+                      <div className="flex items-center justify-between text-[8px] text-slate-500 font-mono px-1">
+                        <span>{sms.timestamp}</span>
+                        <span className="text-emerald-550 flex items-center gap-0.5">
+                          <span>✓✓ تم الإرسال للمالك</span>
+                        </span>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+
+              {/* فورم كتابة وإرسال رسالة يدوية مخصصة تجريبياً */}
+              <form onSubmit={handleSendCustomSms} className="flex gap-1.5 border-t border-slate-800 pt-2 bg-slate-900 z-10">
+                <input 
+                  type="text"
+                  value={testSmsText}
+                  onChange={(e) => setTestSmsText(e.target.value)}
+                  placeholder="اكتب رسالة تجريبية مخصصة لصاحب البضاعة..."
+                  className="flex-1 text-[10px] px-3 py-2 bg-slate-850 border border-slate-800 rounded-xl focus:border-emerald-500 outline-none text-white text-right placeholder-slate-600"
+                />
+                <button 
+                  type="submit"
+                  disabled={!testSmsText.trim()}
+                  className="bg-emerald-600 hover:bg-emerald-505 text-white p-2 rounded-xl text-xs font-bold transition-all disabled:opacity-40 cursor-pointer"
+                  title="إرسال رسالة يدوية مخصصة"
+                >
+                  ◀
+                </button>
+              </form>
             </div>
           </div>
         </div>

@@ -60,6 +60,15 @@ export interface LogEntry {
   userAction?: boolean;
 }
 
+export interface SmsMessage {
+  id: string;
+  phoneNumber: string;
+  message: string;
+  timestamp: string;
+  status: 'sent' | 'delivered' | 'failed';
+  type: 'declaration' | 'payment' | 'completion' | 'custom';
+}
+
 export interface Shipment {
   id: string;
   code: string; // رمز الشحنة المرجعي (مثال: CL-90823)
@@ -87,6 +96,8 @@ export interface Shipment {
   deliveredAt?: string;
   direction?: 'import' | 'export';
   clientName?: string;
+  clientPhone?: string;
+  smsMessages?: SmsMessage[];
   trackingNumber?: string;
   estimatedArrival?: string;
   currentLocation?: string;

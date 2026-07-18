@@ -32,6 +32,7 @@ interface DigitalDocumentCenterProps {
 export default function DigitalDocumentCenter({ shipments, onAddDocument, onUpdateDocument }: DigitalDocumentCenterProps) {
   const [selectedShipmentId, setSelectedShipmentId] = useState<string>('all');
   const [selectedClient, setSelectedClient] = useState<string>('all');
+  const [selectedShipmentType, setSelectedShipmentType] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [viewDoc, setViewDoc] = useState<{ shipmentCode: string; doc: Document } | null>(null);
   
@@ -48,27 +49,57 @@ export default function DigitalDocumentCenter({ shipments, onAddDocument, onUpda
   // استخراج العملاء المميزين
   const clients = Array.from(new Set(shipments.map(s => s.clientName).filter(Boolean)));
 
+  // تصنيف تلقائي للشحنة: تجارية، شخصية، ترانزيت
+  const getShipmentType = (s: Shipment): 'commercial' | 'personal' | 'transit' => {
+    // 1. ترانزيت (إذا كانت الشحنة قيد الترانزيت أو وجهتها ترانزيت أو مسار نقل بري)
+    if (
+      s.currentStatus === 'in_transit' || 
+      s.title.includes('ترانزيت') || 
+      s.portOfDischarge.toLowerCase().includes('ترانزيت') ||
+      s.portOfDischarge.includes('منفذ') ||
+      s.transitProgress > 0
+    ) {
+      return 'transit';
+    }
+    // 2. شخصية (أمتعة أفراد أو عملاء باسم شخصي صريح أو قيمة متدنية)
+    const client = s.clientName || '';
+    if (
+      client.includes('شخصي') || 
+      client.includes('أمتعة') || 
+      (client.length > 0 && !client.includes('شركة') && !client.includes('مجموعة') && !client.includes('مؤسسة') && !client.includes('الجمعية') && !client.includes('مطاحن')) ||
+      s.valueUSD < 15000
+    ) {
+      return 'personal';
+    }
+    // 3. تجارية (شركات ومؤسسات ومجموعات تجارية كبيرة ذات قيمة عالية)
+    return 'commercial';
+  };
+
   // تجميع وتجميع كل المستندات في مصفوفة واحدة للمراقبة والبحث
-  const allDocuments = shipments.flatMap(s => 
-    s.documents.map(d => ({
+  const allDocuments = shipments.flatMap(s => {
+    const sType = getShipmentType(s);
+    return s.documents.map(d => ({
       shipmentId: s.id,
       shipmentCode: s.code,
       shipmentTitle: s.title,
       clientName: s.clientName || 'مجموعة طه رضوان',
+      shipmentType: sType,
       doc: d
-    }))
-  );
+    }));
+  });
 
-  // الفلترة الديناميكية للمستندات حسب الشحنة، العميل، والبحث
+  // الفلترة الديناميكية للمستندات حسب الشحنة، العميل، تصنيف الشحنة، والبحث
   const filteredDocs = allDocuments.filter(item => {
     const matchesShipment = selectedShipmentId === 'all' || item.shipmentId === selectedShipmentId;
     const matchesClient = selectedClient === 'all' || item.clientName === selectedClient;
+    const matchesType = selectedShipmentType === 'all' || item.shipmentType === selectedShipmentType;
     const matchesSearch = 
       item.doc.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
       item.doc.fileNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
       item.clientName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      item.doc.issuer.toLowerCase().includes(searchQuery.toLowerCase()) ||
       item.shipmentCode.toLowerCase().includes(searchQuery.toLowerCase());
-    return matchesShipment && matchesClient && matchesSearch;
+    return matchesShipment && matchesClient && matchesType && matchesSearch;
   });
 
   const getDocTypeAr = (type: DocumentType) => {
@@ -161,47 +192,121 @@ export default function DigitalDocumentCenter({ shipments, onAddDocument, onUpda
         </button>
       </div>
 
-      {/* شريط الفلاتر والبحث الجمركي */}
-      <div className="bg-white border border-gray-100 rounded-2xl p-4 shadow-xs grid grid-cols-1 md:grid-cols-4 gap-3 text-right">
+      {/* شريط الفلاتر والبحث الجمركي مع ميزات التصنيف والبحث السريع */}
+      <div className="bg-white border border-gray-100 rounded-2xl p-5 shadow-xs space-y-4 text-right">
         
-        {/* بحث نصي */}
-        <div className="relative md:col-span-2">
-          <input 
-            type="text" 
-            placeholder="البحث برقم الوثيقة، اسم العميل، أو كود الشحنة..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full text-xs font-sans pl-3 pr-10 py-2 rounded-lg border border-gray-150 focus:outline-hidden focus:border-emerald-500 bg-gray-50/50"
-          />
-          <Search className="absolute right-3 top-2.5 text-gray-400" size={16} />
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+          {/* بحث نصي */}
+          <div className="relative md:col-span-2">
+            <input 
+              type="text" 
+              placeholder="البحث السريع برقم الوثيقة، اسم العميل، كود الشحنة أو المصدر..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full text-xs font-sans pl-3 pr-10 py-2.5 rounded-xl border border-gray-150 focus:outline-hidden focus:border-emerald-500 bg-gray-50/50 focus:bg-white transition-all"
+            />
+            <Search className="absolute right-3 top-3 text-gray-400" size={16} />
+          </div>
+
+          {/* تصفية حسب الشحنة */}
+          <div>
+            <select 
+              value={selectedShipmentId} 
+              onChange={(e) => setSelectedShipmentId(e.target.value)}
+              className="w-full text-xs font-sans py-2.5 px-3 rounded-xl border border-gray-150 focus:outline-hidden focus:border-emerald-500 bg-gray-50/50"
+            >
+              <option value="all">كل الشحنات جمركياً</option>
+              {shipments.map(s => (
+                <option key={s.id} value={s.id}>{s.code} - {s.title.substring(0, 20)}...</option>
+              ))}
+            </select>
+          </div>
+
+          {/* تصفية حسب العميل */}
+          <div>
+            <select 
+              value={selectedClient} 
+              onChange={(e) => setSelectedClient(e.target.value)}
+              className="w-full text-xs font-sans py-2.5 px-3 rounded-xl border border-gray-150 focus:outline-hidden focus:border-emerald-500 bg-gray-50/50"
+            >
+              <option value="all">كل المستوردين / المصدرين</option>
+              {clients.map((c, idx) => (
+                <option key={idx} value={c}>{c}</option>
+              ))}
+            </select>
+          </div>
         </div>
 
-        {/* تصفية حسب الشحنة */}
-        <div>
-          <select 
-            value={selectedShipmentId} 
-            onChange={(e) => setSelectedShipmentId(e.target.value)}
-            className="w-full text-xs font-sans py-2 px-3 rounded-lg border border-gray-150 focus:outline-hidden focus:border-emerald-500 bg-gray-50/50"
-          >
-            <option value="all">كل الشحنات جمركياً</option>
-            {shipments.map(s => (
-              <option key={s.id} value={s.id}>{s.code} - {s.title.substring(0, 20)}...</option>
+        {/* أزرار تصفية سريعة حسب تصنيف الشحنة (تجارية، شخصية، ترانزيت) */}
+        <div className="flex flex-wrap items-center justify-between gap-3 pt-1 border-t border-gray-50">
+          <div className="flex flex-wrap items-center gap-2 text-xs">
+            <span className="text-gray-500 font-bold">تصنيف الشحنة التلقائي:</span>
+            {[
+              { id: 'all', label: 'الكل', icon: '🌐', color: 'bg-emerald-600 text-white border-emerald-600' },
+              { id: 'commercial', label: 'تجارية (Commercial)', icon: '🏢', color: 'bg-blue-600 text-white border-blue-600' },
+              { id: 'personal', label: 'شخصية (Personal)', icon: '👤', color: 'bg-amber-500 text-white border-amber-500' },
+              { id: 'transit', label: 'ترانزيت (Transit)', icon: '🔄', color: 'bg-purple-600 text-white border-purple-600' }
+            ].map(t => {
+              const isActive = selectedShipmentType === t.id;
+              return (
+                <button
+                  type="button"
+                  key={t.id}
+                  onClick={() => setSelectedShipmentType(t.id)}
+                  className={`px-3 py-1.5 rounded-xl border text-[11px] font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                    isActive 
+                      ? t.color + ' shadow-xs' 
+                      : 'bg-gray-50 text-gray-600 border-gray-150 hover:bg-gray-100'
+                  }`}
+                >
+                  <span>{t.icon}</span>
+                  <span>{t.label}</span>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* كلمات البحث السريع */}
+          <div className="flex flex-wrap items-center gap-1.5 text-[10px]">
+            <span className="text-gray-400 font-bold">البحث السريع:</span>
+            {[
+              { label: 'فاتورة', q: 'invoice' },
+              { label: 'بوليصة شحن', q: 'lading' },
+              { label: 'بيان جمركي', q: 'declaration' },
+              { label: 'شهادة منشأ', q: 'origin' },
+              { label: 'مأرب', q: 'مأرب' },
+              { label: 'المطاحن', q: 'المطاحن' }
+            ].map(tag => (
+              <button
+                type="button"
+                key={tag.label}
+                onClick={() => setSearchQuery(tag.q)}
+                className="bg-gray-50 hover:bg-emerald-50 hover:text-emerald-700 text-gray-500 hover:border-emerald-200 px-2.5 py-1 rounded-lg transition-all border border-gray-200/60 cursor-pointer"
+              >
+                #{tag.label}
+              </button>
             ))}
-          </select>
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery('')}
+                className="text-red-500 hover:text-red-700 font-bold px-1 cursor-pointer"
+              >
+                تصفير ×
+              </button>
+            )}
+          </div>
         </div>
 
-        {/* تصفية حسب العميل */}
-        <div>
-          <select 
-            value={selectedClient} 
-            onChange={(e) => setSelectedClient(e.target.value)}
-            className="w-full text-xs font-sans py-2 px-3 rounded-lg border border-gray-150 focus:outline-hidden focus:border-emerald-500 bg-gray-50/50"
-          >
-            <option value="all">كل المستوردين / المصدرين</option>
-            {clients.map((c, idx) => (
-              <option key={idx} value={c}>{c}</option>
-            ))}
-          </select>
+        {/* إحصائيات البحث السريع التلقائية */}
+        <div className="flex justify-between items-center text-[10px] text-gray-400 pt-1 border-t border-gray-50/50">
+          <span>أرشيف المستندات الرقمية: <strong>{filteredDocs.length} من {allDocuments.length}</strong> وثائق جمركية مفهرسة</span>
+          {searchQuery && (
+            <span className="text-emerald-600 font-bold bg-emerald-50/60 px-2 py-0.5 rounded-lg border border-emerald-100/50 animate-pulse flex items-center gap-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+              <span>نتائج بحث سريعة ومحدثة فورياً</span>
+            </span>
+          )}
         </div>
 
       </div>
@@ -216,7 +321,7 @@ export default function DigitalDocumentCenter({ shipments, onAddDocument, onUpda
               className="bg-white border border-gray-100 rounded-2xl p-4 hover:border-emerald-300 hover:shadow-xs hover:bg-emerald-50/5 transition-all flex flex-col justify-between cursor-pointer text-right group"
             >
               <div className="space-y-3">
-                <div className="flex items-start justify-between gap-2">
+                <div className="flex items-start justify-between gap-2 w-full">
                   <div className="flex items-center gap-3">
                     <span className="text-2xl p-2 bg-gray-50 rounded-xl group-hover:bg-emerald-50 transition-all">
                       {getDocIcon(item.doc.type)}
@@ -228,6 +333,17 @@ export default function DigitalDocumentCenter({ shipments, onAddDocument, onUpda
                       <span className="text-[9px] text-gray-400 font-mono block mt-0.5">الرقم المرجعي: {item.doc.fileNumber}</span>
                     </div>
                   </div>
+                  
+                  {/* شارة التصنيف التلقائي */}
+                  <span className={`text-[9px] font-bold px-2 py-0.5 rounded-lg border whitespace-nowrap self-start ${
+                    item.shipmentType === 'commercial' ? 'bg-blue-50 text-blue-700 border-blue-100'
+                      : item.shipmentType === 'personal' ? 'bg-amber-50 text-amber-700 border-amber-100'
+                      : 'bg-purple-50 text-purple-700 border-purple-100'
+                  }`}>
+                    {item.shipmentType === 'commercial' ? '🏢 تجارية'
+                      : item.shipmentType === 'personal' ? '👤 شخصية'
+                      : '🔄 ترانزيت'}
+                  </span>
                 </div>
 
                 <div className="space-y-1.5 border-t border-gray-50 pt-2.5 text-[10px] text-gray-500">
@@ -295,6 +411,25 @@ export default function DigitalDocumentCenter({ shipments, onAddDocument, onUpda
                     <option key={s.id} value={s.id}>{s.code} - {s.title}</option>
                   ))}
                 </select>
+                {(() => {
+                  const selectedUploadShipment = shipments.find(s => s.id === uploadShipmentId);
+                  if (!selectedUploadShipment) return null;
+                  const detectedUploadShipmentType = getShipmentType(selectedUploadShipment);
+                  return (
+                    <div className="bg-gray-50 border border-gray-100 p-2.5 rounded-xl flex items-center justify-between text-[11px] mt-1.5">
+                      <span className="text-gray-500 font-bold">التصنيف التلقائي للشحنة:</span>
+                      <span className={`font-bold px-2 py-0.5 rounded-lg border flex items-center gap-1 ${
+                        detectedUploadShipmentType === 'commercial' ? 'bg-blue-50 text-blue-700 border-blue-100'
+                          : detectedUploadShipmentType === 'personal' ? 'bg-amber-50 text-amber-700 border-amber-100'
+                          : 'bg-purple-50 text-purple-700 border-purple-100'
+                      }`}>
+                        {detectedUploadShipmentType === 'commercial' ? '🏢 شحنة تجارية'
+                          : detectedUploadShipmentType === 'personal' ? '👤 أمتعة شخصية'
+                          : '🔄 ترانزيت ونقل بري'}
+                      </span>
+                    </div>
+                  );
+                })()}
               </div>
 
               {/* اختيار نوع المستند */}

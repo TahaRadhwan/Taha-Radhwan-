@@ -416,6 +416,8 @@ export const INITIAL_SHIPMENTS: Shipment[] = [
     currentStatus: 'inspection', // في مرحلة المعاينة
     direction: 'import',
     clientName: 'مجموعة مأرب للتجارة والاستيراد',
+    clientPhone: '+967 771 234 567',
+    smsMessages: [],
     estimatedArrival: '2026-07-22',
     currentLocation: 'خليج عدن - على بعد 15 ميل بحري من رصيف ميناء عدن للمعاينة والفرز جمركياً',
     documents: [], // سيتم إنشاؤها بالدوال
@@ -452,6 +454,8 @@ export const INITIAL_SHIPMENTS: Shipment[] = [
     currentStatus: 'payment_pending', // في انتظار سداد الرسوم الجمركية
     direction: 'import',
     clientName: 'الشركة اليمنية للمطاحن وصوامع الغلال',
+    clientPhone: '+967 775 654 321',
+    smsMessages: [],
     estimatedArrival: '2026-07-18',
     currentLocation: 'ميناء الحديدة - ساحة فرز جمارك الحديدة وبانتظار سداد رسوم البيان الجمركي الموحد للجمهور',
     documents: [],
@@ -490,6 +494,33 @@ export const INITIAL_SHIPMENTS: Shipment[] = [
     currentStatus: 'delivered', // تم التوصيل بالكامل
     direction: 'export',
     clientName: 'الجمعية التعاونية لمنتجي العسل اليمني بدوعن',
+    clientPhone: '+967 733 987 654',
+    smsMessages: [
+      {
+        id: 'sms_hist_1',
+        phoneNumber: '+967 733 987 654',
+        message: 'عزيزنا المستورد/المصدر: تم فتح قيد جمركي رقم YE-55122 لبضاعتكم (تصدير عسل سدر ملكي دوعني فاخر) بنجاح عبر نظام ديلفار بجمارك الجمهورية اليمنية. نتمنى لكم التوفيق.',
+        timestamp: '2026-07-05 10:30',
+        status: 'delivered',
+        type: 'declaration'
+      },
+      {
+        id: 'sms_hist_2',
+        phoneNumber: '+967 733 987 654',
+        message: 'مصلحة الجمارك: تم استلام وتأكيد سداد الرسوم والضرائب المستحقة للبيان الجمركي الموحد YE-55122 بنجاح برقم إيصال PAY-SYS-981242 بقيمة 45,000 ريال يمني.',
+        timestamp: '2026-07-06 09:05',
+        status: 'delivered',
+        type: 'payment'
+      },
+      {
+        id: 'sms_hist_3',
+        phoneNumber: '+967 733 987 654',
+        message: 'مؤسسة طه رضوان اللوجستية: تم الانتهاء من تخليص المعاملة الجمركية بنجاح وتفريغها بالمستودعات بالكامل. نشكركم لثقتكم بخدماتنا اللوجستية.',
+        timestamp: '2026-07-08 11:02',
+        status: 'delivered',
+        type: 'completion'
+      }
+    ],
     estimatedArrival: '2026-07-15',
     currentLocation: 'المملكة العربية السعودية - تم استلام وتفريغ الشحنة بمستودعات الرياض وتوقيع سند المبرز النهائي',
     documents: [],

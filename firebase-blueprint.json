@@ -31,6 +31,8 @@
         "deliveredAt": { "type": "string", "maxLength": 64 },
         "direction": { "type": "string", "maxLength": 16 },
         "clientName": { "type": "string", "maxLength": 128 },
+        "clientPhone": { "type": "string", "maxLength": 32 },
+        "smsMessages": { "type": "array" },
         "trackingNumber": { "type": "string", "maxLength": 128 },
         "estimatedArrival": { "type": "string", "maxLength": 64 },
         "currentLocation": { "type": "string", "maxLength": 256 },

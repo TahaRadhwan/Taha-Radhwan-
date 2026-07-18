@@ -21,7 +21,8 @@ import {
   FileCheck2,
   PackageCheck,
   Building2,
-  Printer
+  Printer,
+  Download
 } from 'lucide-react';
 import OfficialCustomsReportModal from './OfficialCustomsReportModal';
 
@@ -47,6 +48,7 @@ export default function ShipmentList({ shipments, onSelectShipment, onAddShipmen
   const [weight, setWeight] = useState(10);
   const [valueUSD, setValueUSD] = useState(50000);
   const [clientName, setClientName] = useState('');
+  const [clientPhone, setClientPhone] = useState('');
   const [direction, setDirection] = useState<'import' | 'export'>('import');
 
   const getStatusBadge = (status: CustomsStatus) => {
@@ -132,6 +134,8 @@ export default function ShipmentList({ shipments, onSelectShipment, onAddShipmen
       currentStatus: 'purchased',
       direction: direction,
       clientName: clientName || 'مجموعة طه رضوان للخدمات اللوجستية',
+      clientPhone: clientPhone || '+967 770 000 000',
+      smsMessages: [],
       estimatedArrival: new Date(Date.now() + 10 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
       currentLocation: direction === 'export' ? 'مستودع التصدير المحيط بالجمهور - جاري تجميع البضاعة' : 'ميناء المغادرة الأصلي - بانتظار الشحن البحري لليمن',
       documents: [], // سيتم ملؤها بالدالة المعتمدة بالأسفل
@@ -176,6 +180,102 @@ export default function ShipmentList({ shipments, onSelectShipment, onAddShipmen
     setTitle('');
     setWeight(10);
     setValueUSD(50000);
+    setClientName('');
+    setClientPhone('');
+  };
+
+  const handleDownloadCSV = () => {
+    // تحديد الأعمدة ورأس الجدول باللغة العربية مع دعم فني متكامل
+    const headers = [
+      'كود المعاملة',
+      'تفاصيل الشحنة',
+      'نوع السلعة',
+      'المستورد / العميل',
+      'المورد',
+      'بلد المنشأ',
+      'منفذ التخليص',
+      'رقم الحاوية',
+      'الوزن (طن)',
+      'القيمة بالدولار ($)',
+      'القيمة بالريال اليمني',
+      'الشركة الملاحية',
+      'الحالة الجمركية',
+      'الاتجاه',
+      'رمز البند الجمركي (HS)',
+      'نسبة الرسوم',
+      'مسار التفتيش',
+      'حالة دفع الرسوم',
+      'تاريخ الإنشاء',
+      'تاريخ الوصول المتوقع'
+    ];
+
+    const getStatusTextAr = (status: CustomsStatus) => {
+      switch (status) {
+        case 'purchased': return 'شراء الطلب';
+        case 'docs_ready': return 'الوثائق جاهزة';
+        case 'arrived_at_port': return 'وصول المنفذ';
+        case 'declaration_submitted': return 'تقديم البيان الجمركي';
+        case 'inspection': return 'المعاينة والتفتيش';
+        case 'lab_testing': return 'فحص المقاييس';
+        case 'payment_pending': return 'بانتظار سداد الرسوم';
+        case 'released': return 'الفسح الجمركي';
+        case 'in_transit': return 'الترانزيت البري';
+        case 'delivered': return 'مكتملة بالمستودعات';
+        default: return status;
+      }
+    };
+
+    const rows = filteredShipments.map(s => [
+      s.code,
+      s.title,
+      getCargoTypeLabel(s.cargoType),
+      s.clientName,
+      s.supplier,
+      s.countryOfOrigin,
+      s.portOfDischarge,
+      s.containerNumber,
+      s.weight,
+      s.valueUSD,
+      s.valueLocal,
+      s.carrierName,
+      getStatusTextAr(s.currentStatus),
+      s.direction === 'import' ? 'استيراد' : 'تصدير',
+      s.hsCode,
+      `${s.dutyRate * 100}%`,
+      s.inspectionChannel === 'red' ? 'أحمر (معاينة كاملة)' : s.inspectionChannel === 'yellow' ? 'أصفر (تدقيق مستندات)' : 'أخضر (فسح مباشر)',
+      s.dutiesPaid ? 'تم الدفع' : 'معلق / لم يدفع',
+      s.createdAt,
+      s.estimatedArrival
+    ]);
+
+    // تحويل المصفوفات إلى صيغة CSV آمنة ومعالجة حقول النصوص والفاصلة
+    const escapeCsvField = (field: any) => {
+      if (field === null || field === undefined) return '';
+      const stringVal = String(field);
+      // إذا كانت تحتوي على فاصلة أو علامة اقتباس أو سطر جديد، يجب تغليفها بعلامات اقتباس مزدوجة ومضاعفة علامات الاقتباس الموجودة
+      if (stringVal.includes(',') || stringVal.includes('"') || stringVal.includes('\n') || stringVal.includes('\r')) {
+        return `"${stringVal.replace(/"/g, '""')}"`;
+      }
+      return stringVal;
+    };
+
+    const csvContent = [
+      headers.map(escapeCsvField).join(','),
+      ...rows.map(row => row.map(escapeCsvField).join(','))
+    ].join('\r\n');
+
+    // إضافة BOM لمساعدة Excel في قراءة الرموز العربية بشكل صحيح UTF-8
+    const BOM = '\uFEFF';
+    const blob = new Blob([BOM + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `taha_radhwan_shipments_export_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
   return (
@@ -236,6 +336,15 @@ export default function ShipmentList({ shipments, onSelectShipment, onAddShipmen
               <option value="delivered">10. بالمخازن مكتملة</option>
             </select>
           </div>
+
+          <button 
+            onClick={handleDownloadCSV}
+            className="border border-slate-200 hover:bg-emerald-50/50 text-slate-700 hover:text-emerald-800 hover:border-emerald-200 px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shrink-0 cursor-pointer"
+            title="تنزيل البيانات الحالية للشحنات والبيانات الجمركية كملف CSV للاستخدام في البرامج المحاسبية والمخازن"
+          >
+            <Download size={14} className="text-emerald-600" />
+            <span>تصدير ملف محاسبي CSV</span>
+          </button>
 
           <button 
             onClick={() => setShowReportModal(true)}
@@ -336,8 +445,8 @@ export default function ShipmentList({ shipments, onSelectShipment, onAddShipmen
             {/* فورم الإضافة */}
             <form onSubmit={handleSubmitNewShipment} className="p-6 overflow-y-auto max-h-[75vh] space-y-4 text-right" dir="rtl">
               
-              {/* اتجاه الحركة والتاجر المالك */}
-              <div className="grid grid-cols-2 gap-3">
+              {/* اتجاه الحركة والتاجر المالك ورقم جواله */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div className="space-y-1">
                   <label className="text-xs font-bold text-gray-600 block">اتجاه حركة الشحنة جمركياً:</label>
                   <select 
@@ -354,10 +463,23 @@ export default function ShipmentList({ shipments, onSelectShipment, onAddShipmen
                   <label className="text-xs font-bold text-gray-600 block">اسم التاجر أو العميل المستورد:</label>
                   <input 
                     type="text" 
-                    placeholder="مثال: مجموعة هائل سعيد، مكتب سبأ للتجارة..."
+                    placeholder="مثال: مجموعة هائل سعيد..."
                     value={clientName}
                     onChange={(e) => setClientName(e.target.value)}
                     className="w-full text-xs px-3.5 py-2 border border-gray-200 rounded-xl focus:border-emerald-500 outline-none bg-gray-50/50"
+                    required
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-gray-600 block">رقم جوال صاحب البضاعة:</label>
+                  <input 
+                    type="text" 
+                    placeholder="مثال: +967 771 234 567"
+                    value={clientPhone}
+                    onChange={(e) => setClientPhone(e.target.value)}
+                    className="w-full text-xs px-3.5 py-2 border border-gray-200 rounded-xl focus:border-emerald-500 outline-none bg-gray-50/50 text-left font-mono"
+                    dir="ltr"
                     required
                   />
                 </div>

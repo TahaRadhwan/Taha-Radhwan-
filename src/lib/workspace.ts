@@ -497,3 +497,67 @@ export async function sendGoogleChatMessage(spaceName: string, textContent: stri
 
   return true;
 }
+
+/**
+ * جلب قائمة المواعيد والأحداث القادمة من تقويم جوجل (Google Calendar)
+ */
+export async function getGoogleCalendarEvents(token: string): Promise<any[]> {
+  const timeMin = new Date().toISOString();
+  const res = await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events?maxResults=15&orderBy=startTime&singleEvents=true&timeMin=${timeMin}`, {
+    headers: {
+      'Authorization': `Bearer ${token}`
+    }
+  });
+
+  if (!res.ok) {
+    const errorDetails = await res.text();
+    throw new Error(`فشل جلب مواعيد تقويم Google: ${errorDetails}`);
+  }
+
+  const data = await res.json();
+  const items = data.items || [];
+
+  return items.map((item: any) => ({
+    id: item.id,
+    summary: item.summary || 'حدث بدون عنوان',
+    description: item.description || '',
+    start: item.start?.dateTime || item.start?.date || '',
+    end: item.end?.dateTime || item.end?.date || '',
+    htmlLink: item.htmlLink
+  }));
+}
+
+/**
+ * جدولة موعد جديد في تقويم جوجل (Google Calendar) للشحنة الجمركية
+ */
+export async function createGoogleCalendarEvent(
+  event: { summary: string; description: string; startDateTime: string; endDateTime: string }, 
+  token: string
+): Promise<boolean> {
+  const res = await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      summary: event.summary,
+      description: event.description,
+      start: {
+        dateTime: event.startDateTime,
+        timeZone: 'Asia/Aden'
+      },
+      end: {
+        dateTime: event.endDateTime,
+        timeZone: 'Asia/Aden'
+      }
+    })
+  });
+
+  if (!res.ok) {
+    const errorDetails = await res.text();
+    throw new Error(`فشل جدولة الموعد في تقويم Google: ${errorDetails}`);
+  }
+
+  return true;
+}

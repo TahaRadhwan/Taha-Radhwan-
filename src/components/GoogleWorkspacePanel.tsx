@@ -14,7 +14,9 @@ import {
   sendGmailEmail,
   generateSlidesReport,
   getGoogleChatSpaces,
-  sendGoogleChatMessage
+  sendGoogleChatMessage,
+  getGoogleCalendarEvents,
+  createGoogleCalendarEvent
 } from '../lib/workspace';
 import { 
   FileSpreadsheet, 
@@ -35,7 +37,9 @@ import {
   Presentation,
   MessageSquare,
   Send,
-  Hash
+  Hash,
+  Calendar,
+  Clock
 } from 'lucide-react';
 
 interface GoogleWorkspacePanelProps {
@@ -93,6 +97,20 @@ export default function GoogleWorkspacePanel({
   const [selectedSpaceName, setSelectedSpaceName] = useState('');
   const [chatMessage, setChatMessage] = useState('');
   const [isSendingChatMessage, setIsSendingChatMessage] = useState(false);
+
+  // States for Google Calendar
+  const [calendarEvents, setCalendarEvents] = useState<any[]>([]);
+  const [isLoadingEvents, setIsLoadingEvents] = useState(false);
+  const [isSchedulingEvent, setIsSchedulingEvent] = useState(false);
+  const [selectedCalendarShipmentId, setSelectedCalendarShipmentId] = useState(shipments[0]?.id || '');
+  const [calendarForm, setCalendarForm] = useState({
+    summary: 'معاينة وفحص جمركي للحاوية',
+    description: 'موعد فحص الحاوية ومطابقة المستندات بجمارك المنطقة الحرة',
+    startDate: new Date(Date.now() + 86400000).toISOString().split('T')[0], // Tomorrow
+    startTime: '09:00',
+    endTime: '10:00'
+  });
+  const [calendarActionMessage, setCalendarActionMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
 
   // تصدير المعاملات إلى شيت
   const handleExportSheets = async () => {
@@ -365,6 +383,69 @@ export default function GoogleWorkspacePanel({
       alert('فشل إرسال الرسالة إلى Google Chat. تأكد من صلاحية الإرسال بداخل الغرفة/المساحة المحددة.');
     } finally {
       setIsSendingChatMessage(false);
+    }
+  };
+
+  // جلب الأحداث والمواعيد القادمة من تقويم جوجل
+  const handleLoadCalendarEvents = async () => {
+    if (!token) return;
+    setIsLoadingEvents(true);
+    setCalendarEvents([]);
+    try {
+      const eventsList = await getGoogleCalendarEvents(token);
+      setCalendarEvents(eventsList);
+    } catch (err: any) {
+      console.error(err);
+      alert('حدث خطأ أثناء جلب مواعيد تقويم Google. يرجى التحقق من الصلاحيات والربط.');
+    } finally {
+      setIsLoadingEvents(false);
+    }
+  };
+
+  // جدولة موعد جديد في تقويم جوجل بخصوص المعاملات الجمركية
+  const handleScheduleCalendarEvent = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!token) return;
+
+    // الحصول على الشحنة المحددة لتضمين تفاصيلها بالموعد
+    const selectedShipment = shipments.find(s => s.id === selectedCalendarShipmentId);
+    let finalSummary = calendarForm.summary;
+    let finalDescription = calendarForm.description;
+
+    if (selectedShipment) {
+      finalSummary = `${calendarForm.summary} - شحنة ${selectedShipment.code}`;
+      finalDescription = `${calendarForm.description}\n\nتفاصيل الشحنة:\n- الرمز: ${selectedShipment.code}\n- البضاعة: ${selectedShipment.title}\n- الميناء: ${selectedShipment.portOfDischarge}\n- رقم الحاوية: ${selectedShipment.containerNumber}\n- الوزن: ${selectedShipment.weight} طن`;
+    }
+
+    // تأكيد المستخدم الإجباري قبل إجراء التعديل (Mutating Operation Confirmation)
+    const confirmed = window.confirm(
+      `هل أنت متأكد من رغبتك في جدولة وإضافة هذا الموعد إلى تقويم جوجل (Google Calendar) الخاص بك؟\n\nالموعد: ${finalSummary}\nالتاريخ: ${calendarForm.startDate}\nالوقت: من ${calendarForm.startTime} إلى ${calendarForm.endTime}`
+    );
+    if (!confirmed) return;
+
+    setIsSchedulingEvent(true);
+    setCalendarActionMessage(null);
+
+    // بناء الصيغة الكاملة لتاريخ ووقت البداية والنهاية
+    const startISO = `${calendarForm.startDate}T${calendarForm.startTime}:00`;
+    const endISO = `${calendarForm.startDate}T${calendarForm.endTime}:00`;
+
+    try {
+      await createGoogleCalendarEvent({
+        summary: finalSummary,
+        description: finalDescription,
+        startDateTime: startISO,
+        endDateTime: endISO
+      }, token);
+
+      setCalendarActionMessage({ type: 'success', text: '✓ تم جدولة وإضافة الموعد بنجاح إلى تقويم Google الخاص بك!' });
+      // إعادة تحميل قائمة المواعيد لمزامنتها حياً فوراً
+      handleLoadCalendarEvents();
+    } catch (err: any) {
+      console.error(err);
+      setCalendarActionMessage({ type: 'error', text: 'فشل جدولة الموعد في تقويم Google. تأكد من تفعيل صلاحيات التقويم.' });
+    } finally {
+      setIsSchedulingEvent(false);
     }
   };
 
@@ -901,6 +982,172 @@ export default function GoogleWorkspacePanel({
               )}
             </div>
           </div>
+        </div>
+
+        {/* القسم السابع: Google Calendar (تقويم جوجل) */}
+        <div className="bg-slate-850 border border-slate-800 rounded-2xl p-5 space-y-4 flex flex-col justify-between">
+          <div className="space-y-3">
+            <div className="flex items-center gap-2.5 pb-2 border-b border-slate-800">
+              <div className="bg-purple-500/10 p-2 rounded-xl text-purple-400">
+                <Calendar size={18} />
+              </div>
+              <div>
+                <h3 className="text-xs font-bold text-white">جدولة المواعيد والمعاينات (Calendar)</h3>
+                <span className="text-[9px] text-slate-400">إدارة وتتبع مواعيد فحص وتوصيل الحاويات حياً</span>
+              </div>
+            </div>
+
+            <p className="text-[10px] text-slate-300 leading-relaxed">
+              خطط وجدول مواعيد معاينة الحاويات، جلسات الفحص المخبري، وتواريخ الفسح مباشرة في تقويم جوجل الموثق لمشاركتها مع فريق التخليص ومندوبي مصلحة الجمارك.
+            </p>
+
+            {/* زر جلب المواعيد الحالية */}
+            <div className="space-y-2">
+              <button
+                onClick={handleLoadCalendarEvents}
+                disabled={isLoadingEvents || !token}
+                className="w-full flex items-center justify-center gap-1.5 bg-slate-800 hover:bg-slate-750 text-white text-xs font-bold py-2 px-3 rounded-xl border border-slate-700 transition-all cursor-pointer disabled:opacity-50"
+              >
+                {isLoadingEvents ? (
+                  <Loader2 size={12} className="animate-spin" />
+                ) : (
+                  <RefreshCw size={12} className="text-purple-400" />
+                )}
+                <span>استعراض المواعيد القادمة في تقويم جوجل</span>
+              </button>
+
+              {calendarEvents.length > 0 && (
+                <div className="bg-slate-900 border border-slate-800 rounded-xl p-2 max-h-[140px] overflow-y-auto space-y-1.5 text-right">
+                  <span className="text-[8px] text-slate-400 font-bold block mb-1">المواعيد المجدولة القادمة ({calendarEvents.length}):</span>
+                  {calendarEvents.map((evt, idx) => (
+                    <div key={idx} className="border-b border-slate-800 pb-1.5 last:border-0 text-[9px]">
+                      <div className="flex items-center justify-between">
+                        <span className="text-white font-bold block truncate max-w-[150px]">{evt.summary}</span>
+                        {evt.htmlLink && (
+                          <a href={evt.htmlLink} target="_blank" rel="noreferrer" className="text-purple-400 hover:underline text-[8px] inline-flex items-center gap-0.5">
+                            <span>تفاصيل</span>
+                            <ExternalLink size={8} />
+                          </a>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1 text-[8px] text-slate-400 mt-0.5">
+                        <Clock size={8} />
+                        <span>
+                          {new Date(evt.start).toLocaleString('ar-YE', {
+                            month: 'short',
+                            day: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit'
+                          })}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* نموذج جدولة موعد جديد */}
+          <form onSubmit={handleScheduleCalendarEvent} className="border-t border-slate-800 pt-4 space-y-2 text-right">
+            <h4 className="text-[10px] font-bold text-white flex items-center gap-1">
+              <Plus size={11} className="text-purple-400" />
+              <span>جدولة موعد فحص/معاينة جديد</span>
+            </h4>
+
+            <div className="space-y-1.5">
+              <div className="space-y-0.5">
+                <label className="text-[8px] text-slate-400 block font-bold">ربط الموعد بشحنة جمركية:</label>
+                <select
+                  value={selectedCalendarShipmentId}
+                  onChange={(e) => setSelectedCalendarShipmentId(e.target.value)}
+                  className="w-full text-[9px] px-2.5 py-1.5 bg-slate-900 border border-slate-750 rounded-lg text-white outline-none focus:border-purple-500"
+                >
+                  <option value="">-- بدون ربط بشحنة (موعد عام) --</option>
+                  {shipments.map(s => (
+                    <option key={s.id} value={s.id}>{s.code} - {s.title}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="grid grid-cols-2 gap-1.5">
+                <div className="space-y-0.5">
+                  <label className="text-[8px] text-slate-400 block font-bold">عنوان الموعد:</label>
+                  <input 
+                    type="text" 
+                    placeholder="عنوان الحدث..." 
+                    value={calendarForm.summary}
+                    onChange={(e) => setCalendarForm({ ...calendarForm, summary: e.target.value })}
+                    className="w-full text-[9px] px-2.5 py-1.5 bg-slate-900 border border-slate-750 rounded-lg text-white outline-none focus:border-purple-500"
+                    required
+                  />
+                </div>
+                <div className="space-y-0.5">
+                  <label className="text-[8px] text-slate-400 block font-bold">التاريخ:</label>
+                  <input 
+                    type="date" 
+                    value={calendarForm.startDate}
+                    onChange={(e) => setCalendarForm({ ...calendarForm, startDate: e.target.value })}
+                    className="w-full text-[9px] px-2.5 py-1.5 bg-slate-900 border border-slate-750 rounded-lg text-white outline-none focus:border-purple-500 text-left"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-1.5">
+                <div className="space-y-0.5">
+                  <label className="text-[8px] text-slate-400 block font-bold">وقت البداية:</label>
+                  <input 
+                    type="time" 
+                    value={calendarForm.startTime}
+                    onChange={(e) => setCalendarForm({ ...calendarForm, startTime: e.target.value })}
+                    className="w-full text-[9px] px-2.5 py-1.5 bg-slate-900 border border-slate-750 rounded-lg text-white outline-none focus:border-purple-500 text-left"
+                    required
+                  />
+                </div>
+                <div className="space-y-0.5">
+                  <label className="text-[8px] text-slate-400 block font-bold">وقت النهاية:</label>
+                  <input 
+                    type="time" 
+                    value={calendarForm.endTime}
+                    onChange={(e) => setCalendarForm({ ...calendarForm, endTime: e.target.value })}
+                    className="w-full text-[9px] px-2.5 py-1.5 bg-slate-900 border border-slate-750 rounded-lg text-white outline-none focus:border-purple-500 text-left"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-0.5">
+                <label className="text-[8px] text-slate-400 block font-bold">الوصف والتفاصيل:</label>
+                <textarea 
+                  rows={2}
+                  placeholder="اكتب ملاحظات إضافية بخصوص الموعد..." 
+                  value={calendarForm.description}
+                  onChange={(e) => setCalendarForm({ ...calendarForm, description: e.target.value })}
+                  className="w-full text-[9px] px-2.5 py-1.5 bg-slate-900 border border-slate-750 rounded-lg text-white outline-none focus:border-purple-500 resize-none font-sans"
+                />
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              disabled={isSchedulingEvent || !token}
+              className="w-full flex items-center justify-center gap-1.5 bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold py-2 px-4 rounded-xl transition-all shadow-sm cursor-pointer disabled:opacity-50"
+            >
+              {isSchedulingEvent ? (
+                <Loader2 size={13} className="animate-spin" />
+              ) : (
+                <Calendar size={13} />
+              )}
+              <span>إرسال وتثبيت الموعد بـ Calendar</span>
+            </button>
+
+            {calendarActionMessage && (
+              <p className={`text-[9px] p-1.5 rounded text-center ${calendarActionMessage.type === 'success' ? 'bg-emerald-950/50 text-emerald-400 border border-emerald-900/30' : 'bg-rose-950/50 text-rose-400 border border-rose-900/30'}`}>
+                {calendarActionMessage.text}
+              </p>
+            )}
+          </form>
         </div>
 
       </div>
